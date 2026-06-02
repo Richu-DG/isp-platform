@@ -19,7 +19,10 @@ api.interceptors.response.use(
   (res) => res,
   async (err) => {
     const original = err.config;
-    if (err.response?.status === 401 && !original._retry) {
+    const isAuthEndpoint = original?.url?.includes("/auth/login") ||
+                           original?.url?.includes("/auth/refresh");
+
+    if (err.response?.status === 401 && !original._retry && !isAuthEndpoint) {
       original._retry = true;
       try {
         const refreshToken = localStorage.getItem("refresh_token");
@@ -32,7 +35,7 @@ api.interceptors.response.use(
       } catch {
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
-        window.location.href = "/auth/login";
+        if (typeof window !== "undefined") window.location.href = "/auth/login";
       }
     }
     return Promise.reject(err);
