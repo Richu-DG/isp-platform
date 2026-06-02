@@ -1,0 +1,577 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// ─── Tenants ──────────────────────────────────────────────────────────────────
+model Tenant {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  domain      String?  @unique
+  logo        String?
+  phone       String?
+  email       String?
+  address     String?
+  county      String?
+  country     String   @default("KE")
+  currency    String   @default("KES")
+  timezone    String   @default("Africa/Nairobi")
+  mpesaConfig Json?
+  smsConfig   Json?
+  emailConfig Json?
+  whatsappConfig Json?
+  settings    Json?    @default("{}")
+  isActive    Boolean  @default(true)
+  trialEndsAt DateTime?
+  plan        TenantPlan @default(STARTER)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users         User[]
+  subscribers   Subscriber[]
+  packages      Package[]
+  routers       Router[]
+  vouchers      Voucher[]
+  invoices      Invoice[]
+  payments      Payment[]
+  tickets       Ticket[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+
+  @@map("tenants")
+}
+
+enum TenantPlan {
+  STARTER
+  GROWTH
+  ENTERPRISE
+}
+
+// ─── Users (Admin Portal) ─────────────────────────────────────────────────────
+model User {
+  id           String    @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String
+  password     String
+  name         String
+  phone        String?
+  avatar       String?
+  role         Role      @default(SUPPORT)
+  mfaEnabled   Boolean   @default(false)
+  mfaSecret    String?
+  refreshToken String?
+  lastLogin    DateTime?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  auditLogs       AuditLog[]
+  assignedTickets Ticket[]
+  ticketComments  TicketComment[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ISP_OWNER
+  MANAGER
+  ACCOUNTANT
+  SUPPORT
+  NETWORK_ENGINEER
+}
+
+// ─── Subscribers ─────────────────────────────────────────────────────────────
+model Subscriber {
+  id              String           @id @default(cuid())
+  tenantId        String
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fullName        String
+  phone           String
+  email           String?
+  nationalId      String?
+  address         String?
+  apartmentNumber String?
+  gpsLat          Float?
+  gpsLng          Float?
+  notes           String?
+  username        String
+  password        String
+  status          SubscriberStatus @default(PENDING)
+  packageId       String?
+  package         Package?         @relation(fields: [packageId], references: [id])
+  expiresAt       DateTime?
+  dataUsed        BigInt           @default(0)
+  dataLimit       BigInt?
+  staticIp        String?
+  autoRenew       Boolean          @default(false)
+  suspendReason   String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  sessions      Session[]
+  devices       Device[]
+  invoices      Invoice[]
+  payments      Payment[]
+  tickets       Ticket[]
+  notifications Notification[]
+  usageRecords  UsageRecord[]
+
+  @@unique([tenantId, phone])
+  @@unique([tenantId, username])
+  @@index([tenantId, status])
+  @@index([tenantId, expiresAt])
+  @@map("subscribers")
+}
+
+enum SubscriberStatus {
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+  PENDING
+  BLACKLISTED
+}
+
+// ─── Packages ─────────────────────────────────────────────────────────────────
+model Package {
+  id               String      @id @default(cuid())
+  tenantId         String
+  tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name             String
+  description      String?
+  type             PackageType
+  speedUp          Int?
+  speedDown        Int?
+  uploadLimit      BigInt?
+  downloadLimit    BigInt?
+  dataCap          BigInt?
+  duration         Int?
+  price            Decimal     @db.Decimal(10, 2)
+  taxRate          Decimal?    @db.Decimal(5, 2) @default(0)
+  burstSpeed       Int?
+  fupSpeedDown     Int?
+  fupSpeedUp       Int?
+  fupThreshold     BigInt?
+  radiusProfile    String?
+  mikrotikProfile  String?
+  poolName         String?
+  isPublic         Boolean     @default(true)
+  isActive         Boolean     @default(true)
+  sortOrder        Int         @default(0)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  subscribers Subscriber[]
+  invoices    Invoice[]
+  vouchers    Voucher[]
+
+  @@index([tenantId, isActive])
+  @@map("packages")
+}
+
+enum PackageType {
+  TIME_BASED
+  DATA_BASED
+  HYBRID
+  UNLIMITED
+}
+
+// ─── Routers ──────────────────────────────────────────────────────────────────
+model Router {
+  id          String     @id @default(cuid())
+  tenantId    String
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  ipAddress   String
+  apiPort     Int        @default(8728)
+  username    String
+  password    String
+  type        RouterType @default(HOTSPOT)
+  location    String?
+  description String?
+  isOnline    Boolean    @default(false)
+  lastSeen    DateTime?
+  uptime      String?
+  cpuLoad     Float?
+  memoryUsed  Float?
+  version     String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  accessPoints AccessPoint[]
+  sessions     Session[]
+
+  @@index([tenantId])
+  @@map("routers")
+}
+
+enum RouterType {
+  HOTSPOT
+  PPPOE
+  BOTH
+}
+
+// ─── Access Points ────────────────────────────────────────────────────────────
+model AccessPoint {
+  id         String   @id @default(cuid())
+  routerId   String
+  router     Router   @relation(fields: [routerId], references: [id], onDelete: Cascade)
+  name       String
+  macAddress String
+  ipAddress  String?
+  ssid       String?
+  band       String?
+  location   String?
+  isOnline   Boolean  @default(false)
+  lastSeen   DateTime?
+  signalStrength Int?
+  connectedClients Int @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([routerId, macAddress])
+  @@map("access_points")
+}
+
+// ─── Sessions ─────────────────────────────────────────────────────────────────
+model Session {
+  id               String    @id @default(cuid())
+  subscriberId     String
+  subscriber       Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  routerId         String?
+  router           Router?   @relation(fields: [routerId], references: [id])
+  radiusSessionId  String?   @unique
+  username         String
+  nasIpAddress     String?
+  framedIpAddress  String?
+  macAddress       String?
+  callingStation   String?
+  calledStation    String?
+  startTime        DateTime  @default(now())
+  stopTime         DateTime?
+  sessionTime      Int?
+  uploadBytes      BigInt    @default(0)
+  downloadBytes    BigInt    @default(0)
+  terminateCause   String?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+
+  @@index([subscriberId, isActive])
+  @@index([radiusSessionId])
+  @@index([startTime])
+  @@map("sessions")
+}
+
+// ─── Devices ──────────────────────────────────────────────────────────────────
+model Device {
+  id           String     @id @default(cuid())
+  subscriberId String
+  subscriber   Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  macAddress   String
+  manufacturer String?
+  deviceType   String?
+  browser      String?
+  os           String?
+  hostname     String?
+  ipAddress    String?
+  lastSeen     DateTime?
+  isBlocked    Boolean    @default(false)
+  blockReason  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([subscriberId, macAddress])
+  @@index([macAddress])
+  @@map("devices")
+}
+
+// ─── Invoices ─────────────────────────────────────────────────────────────────
+model Invoice {
+  id            String        @id @default(cuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscriberId  String
+  subscriber    Subscriber    @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  packageId     String?
+  package       Package?      @relation(fields: [packageId], references: [id])
+  invoiceNumber String        @unique
+  amount        Decimal       @db.Decimal(10, 2)
+  taxAmount     Decimal       @db.Decimal(10, 2) @default(0)
+  total         Decimal       @db.Decimal(10, 2)
+  dueDate       DateTime
+  paidAt        DateTime?
+  status        InvoiceStatus @default(PENDING)
+  notes         String?
+  periodStart   DateTime?
+  periodEnd     DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  payments Payment[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, dueDate])
+  @@map("invoices")
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+  REFUNDED
+}
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+model Payment {
+  id                   String        @id @default(cuid())
+  tenantId             String
+  tenant               Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscriberId         String
+  subscriber           Subscriber    @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  invoiceId            String?
+  invoice              Invoice?      @relation(fields: [invoiceId], references: [id])
+  amount               Decimal       @db.Decimal(10, 2)
+  method               PaymentMethod
+  status               PaymentStatus @default(PENDING)
+  mpesaReceiptNumber   String?       @unique
+  mpesaPhoneNumber     String?
+  mpesaTransactionDate String?
+  mpesaMerchantRequestId String?
+  mpesaCheckoutRequestId String?
+  stkPushId            String?
+  reference            String?
+  metadata             Json?
+  failureReason        String?
+  refundedAt           DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@index([mpesaReceiptNumber])
+  @@index([mpesaCheckoutRequestId])
+  @@map("payments")
+}
+
+enum PaymentMethod {
+  MPESA_STK
+  MPESA_PAYBILL
+  CASH
+  BANK_TRANSFER
+  VOUCHER
+  CARD
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+// ─── Vouchers ─────────────────────────────────────────────────────────────────
+model Voucher {
+  id          String      @id @default(cuid())
+  tenantId    String
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  packageId   String?
+  package     Package?    @relation(fields: [packageId], references: [id])
+  batchName   String?
+  code        String      @unique
+  type        VoucherType
+  usageLimit  Int         @default(1)
+  usageCount  Int         @default(0)
+  expiresAt   DateTime?
+  isActive    Boolean     @default(true)
+  printedAt   DateTime?
+  createdAt   DateTime    @default(now())
+
+  redemptions VoucherRedemption[]
+
+  @@index([tenantId, code])
+  @@index([tenantId, batchName])
+  @@map("vouchers")
+}
+
+enum VoucherType {
+  TIME
+  DATA
+  HYBRID
+}
+
+model VoucherRedemption {
+  id           String   @id @default(cuid())
+  voucherId    String
+  voucher      Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  subscriberId String?
+  macAddress   String?
+  ipAddress    String?
+  redeemedAt   DateTime @default(now())
+
+  @@map("voucher_redemptions")
+}
+
+// ─── Tickets ──────────────────────────────────────────────────────────────────
+model Ticket {
+  id           String         @id @default(cuid())
+  tenantId     String
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscriberId String
+  subscriber   Subscriber     @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  assignedToId String?
+  assignedTo   User?          @relation(fields: [assignedToId], references: [id])
+  ticketNumber String         @unique
+  subject      String
+  description  String
+  category     String?
+  priority     TicketPriority @default(MEDIUM)
+  status       TicketStatus   @default(OPEN)
+  resolvedAt   DateTime?
+  closedAt     DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  comments TicketComment[]
+
+  @@index([tenantId, status])
+  @@map("tickets")
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model TicketComment {
+  id         String   @id @default(cuid())
+  ticketId   String
+  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId   String?
+  author     User?    @relation(fields: [authorId], references: [id])
+  content    String
+  isInternal Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@map("ticket_comments")
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+model Notification {
+  id           String              @id @default(cuid())
+  tenantId     String
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscriberId String?
+  subscriber   Subscriber?         @relation(fields: [subscriberId], references: [id])
+  type         NotificationType
+  channel      NotificationChannel
+  recipient    String
+  subject      String?
+  message      String
+  status       NotificationStatus  @default(PENDING)
+  attempts     Int                 @default(0)
+  sentAt       DateTime?
+  errorMessage String?
+  scheduledAt  DateTime?
+  metadata     Json?
+  createdAt    DateTime            @default(now())
+
+  @@index([tenantId, status])
+  @@index([scheduledAt])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  PAYMENT_RECEIVED
+  ACCOUNT_ACTIVATED
+  ACCOUNT_EXPIRING
+  ACCOUNT_EXPIRED
+  ACCOUNT_SUSPENDED
+  PROMOTIONAL
+  SYSTEM
+  TICKET_UPDATE
+}
+
+enum NotificationChannel {
+  SMS
+  WHATSAPP
+  EMAIL
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+// ─── Usage Records ────────────────────────────────────────────────────────────
+model UsageRecord {
+  id            String     @id @default(cuid())
+  subscriberId  String
+  subscriber    Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  sessionId     String?
+  uploadBytes   BigInt
+  downloadBytes BigInt
+  recordedAt    DateTime   @default(now())
+
+  @@index([subscriberId, recordedAt])
+  @@index([recordedAt])
+  @@map("usage_records")
+}
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  resource   String
+  resourceId String?
+  changes    Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, resource])
+  @@map("audit_logs")
+}
+
+// ─── Network Metrics (time-series) ────────────────────────────────────────────
+model NetworkMetric {
+  id           String   @id @default(cuid())
+  routerId     String
+  uploadBps    BigInt   @default(0)
+  downloadBps  BigInt   @default(0)
+  activeUsers  Int      @default(0)
+  cpuLoad      Float?
+  memoryUsed   Float?
+  recordedAt   DateTime @default(now())
+
+  @@index([routerId, recordedAt])
+  @@map("network_metrics")
+}

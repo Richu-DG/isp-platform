@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.next/
+build/
+.turbo/
+.env
+.env.local
+.env.runtime
+.env.*.local
+*.log
+coverage/
+.DS_Store
+prisma/generated/
+packages/database/dist/
+packages/shared/dist/
+ecosystem.config.js
+start-api.sh
