@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import { UserPlus, Search, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertTriangle, Clock } from "lucide-react";
+import { UserPlus, Users, Search, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertTriangle, Clock } from "lucide-react";
 import { clsx } from "clsx";
 
 const STATUS = {

@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
-  "buildCommand": "cd ../.. && pnpm --filter @isp/database generate && cd packages/database && npx tsc && cd ../packages/shared && npx tsc && cd ../apps/web && pnpm build",
+  "buildCommand": "cd ../.. && pnpm --filter @isp/database generate && cd packages/database && npx tsc && cd ../shared && npx tsc && cd ../../apps/web && pnpm build",
   "outputDirectory": ".next",
   "framework": "nextjs"
 }
