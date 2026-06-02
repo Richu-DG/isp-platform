@@ -1,28 +1,6 @@
 [build]
 builder = "dockerfile"
-
-# Railway services are defined per-service in the Railway dashboard
-# Each service points to its own Dockerfile
-#
-# Service: isp-api        → apps/api/Dockerfile
-# Service: isp-web        → apps/web/Dockerfile
-# Service: isp-portal     → apps/portal/Dockerfile
-# Service: isp-redis      → Redis plugin (no Dockerfile needed)
-#
-# Environment variables to set in Railway dashboard:
-#   DATABASE_URL           → Supabase pooler connection string
-#   DIRECT_DATABASE_URL    → Supabase direct connection string
-#   REDIS_URL              → Railway Redis plugin URL
-#   JWT_SECRET             → Random 64-char string
-#   JWT_REFRESH_SECRET     → Random 64-char string
-#   MPESA_CONSUMER_KEY     → Daraja API consumer key
-#   MPESA_CONSUMER_SECRET  → Daraja API consumer secret
-#   MPESA_SHORTCODE        → Your paybill/till number
-#   MPESA_PASSKEY          → Daraja passkey
-#   MPESA_ENVIRONMENT      → production
-#   AT_API_KEY             → Africa's Talking API key
-#   AT_USERNAME            → Your AT username
-#   CORS_ORIGINS           → https://your-web.railway.app,https://your-portal.railway.app
+dockerfilePath = "apps/api/Dockerfile"
 
 [deploy]
 startCommand = "node apps/api/dist/main"
