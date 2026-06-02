@@ -1,6 +1,6 @@
 [build]
-builder = "dockerfile"
-dockerfilePath = "apps/api/Dockerfile"
+builder = "nixpacks"
+buildCommand = "pnpm --filter @isp/database generate && cd packages/database && npx tsc && cd ../shared && npx tsc && cd ../apps/api && pnpm build"
 
 [deploy]
 startCommand = "node apps/api/dist/main"
