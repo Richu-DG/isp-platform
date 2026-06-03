@@ -1,30 +1,51 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../config/prisma.service";
 import { RouterOsApiService } from "./routeros-api.service";
+import { EncryptionService } from "../../common/encryption/encryption.service";
 import { CreateRouterDto, UpdateRouterDto } from "./dto/mikrotik.dto";
 
 @Injectable()
 export class MikrotikService {
   private readonly logger = new Logger(MikrotikService.name);
 
-  constructor(private prisma: PrismaService, private api: RouterOsApiService) {}
+  constructor(
+    private prisma: PrismaService,
+    private api: RouterOsApiService,
+    private encryption: EncryptionService,
+  ) {}
 
   // ─── Router CRUD ──────────────────────────────────────────
 
   async createRouter(tenantId: string, dto: CreateRouterDto) {
-    return this.prisma.router.create({ data: { ...dto, tenantId } });
+    return this.prisma.router.create({
+      data: {
+        ...dto,
+        tenantId,
+        username: this.encryption.encrypt(dto.username),
+        password: this.encryption.encrypt(dto.password),
+      },
+    });
   }
 
   async findRouters(tenantId: string) {
-    return this.prisma.router.findMany({
+    const routers = await this.prisma.router.findMany({
       where: { tenantId },
       include: { accessPoints: true },
     });
+    // Mask credentials in API responses — never expose encrypted blobs to the UI
+    return routers.map(({ username, password, ...r }) => ({
+      ...r,
+      username: "••••••",
+      hasCredentials: true,
+    }));
   }
 
   async updateRouter(tenantId: string, id: string, dto: UpdateRouterDto) {
     await this.ensureRouter(tenantId, id);
-    return this.prisma.router.update({ where: { id }, data: dto });
+    const data: any = { ...dto };
+    if (dto.username) data.username = this.encryption.encrypt(dto.username);
+    if (dto.password) data.password = this.encryption.encrypt(dto.password);
+    return this.prisma.router.update({ where: { id }, data });
   }
 
   async deleteRouter(tenantId: string, id: string) {
@@ -246,8 +267,8 @@ export class MikrotikService {
       {
         host: router.ipAddress,
         port: router.apiPort,
-        user: router.username,
-        password: router.password,
+        user: this.encryption.decrypt(router.username),
+        password: this.encryption.decrypt(router.password),
       },
       commands
     );

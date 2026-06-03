@@ -2,16 +2,20 @@ import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
-  NotFoundException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import bcrypt from "bcryptjs";
 import speakeasy from "speakeasy";
 import qrcode from "qrcode";
+import { createHash } from "crypto";
 import { PrismaService } from "../../config/prisma.service";
 import { LoginDto, RefreshDto, SetupMfaDto, VerifyMfaDto, ChangePasswordDto } from "./dto/auth.dto";
 import { JwtPayload } from "@isp/shared";
+
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
 
 @Injectable()
 export class AuthService {
@@ -52,7 +56,7 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { lastLogin: new Date(), refreshToken: tokens.refreshToken },
+      data: { lastLogin: new Date(), refreshToken: hashToken(tokens.refreshToken) },
     });
 
     await this.prisma.auditLog.create({
@@ -90,14 +94,16 @@ export class AuthService {
         select: { id: true, email: true, role: true, tenantId: true, refreshToken: true, isActive: true },
       });
 
-      if (!user || !user.isActive || user.refreshToken !== dto.refreshToken) {
+      // Compare against hashed value stored in DB
+      if (!user || !user.isActive || user.refreshToken !== hashToken(dto.refreshToken)) {
         throw new UnauthorizedException("Invalid refresh token");
       }
 
+      // Rotate: issue new tokens and invalidate old one
       const tokens = await this.generateTokens(user.id, user.email, user.role, user.tenantId);
       await this.prisma.user.update({
         where: { id: user.id },
-        data: { refreshToken: tokens.refreshToken },
+        data: { refreshToken: hashToken(tokens.refreshToken) },
       });
 
       return tokens;
@@ -173,7 +179,11 @@ export class AuthService {
     }
 
     const hashed = await bcrypt.hash(dto.newPassword, 12);
-    await this.prisma.user.update({ where: { id: userId }, data: { password: hashed } });
+    // Invalidate all sessions when password changes
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashed, refreshToken: null },
+    });
   }
 
   private async generateTokens(id: string, email: string, role: string, tenantId: string) {

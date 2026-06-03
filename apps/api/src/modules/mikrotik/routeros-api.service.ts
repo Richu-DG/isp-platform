@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import * as net from "net";
+import * as tls from "tls";
 
 export interface RouterOsOptions {
   host: string;
@@ -7,20 +8,61 @@ export interface RouterOsOptions {
   user: string;
   password: string;
   timeout?: number;
+  useTls?: boolean;      // true → port 8729 (TLS), false/undefined → port 8728 (plaintext)
 }
 
 export interface RouterOsResponse {
   [key: string]: string;
 }
 
+// ─── Per-router queue ─────────────────────────────────────────────────────────
+// RouterOS API allows only one active request per connection at a time.
+// We serialize calls per router by queuing them behind a per-host promise chain.
+// This prevents the burst of parallel TCP connections that would exhaust the
+// router's default 20-connection limit when the cutoff cron fires on many subs.
+
+const routerQueues = new Map<string, Promise<void>>();
+
+function queueKey(host: string, port: number): string {
+  return `${host}:${port}`;
+}
+
+// ─── Service ──────────────────────────────────────────────────────────────────
+
 @Injectable()
 export class RouterOsApiService {
   private readonly logger = new Logger(RouterOsApiService.name);
 
   async execute(options: RouterOsOptions, commands: string[][]): Promise<RouterOsResponse[][]> {
+    const { host, port: rawPort, useTls } = options;
+    const port = rawPort ?? (useTls ? 8729 : 8728);
+    const key = queueKey(host, port);
+
+    // Serialize calls to the same router to avoid connection limit exhaustion
+    const prev = routerQueues.get(key) ?? Promise.resolve();
+    let resolveCurrent!: () => void;
+    const current = new Promise<void>((r) => { resolveCurrent = r; });
+    routerQueues.set(key, prev.then(() => current));
+
+    await prev;
+    try {
+      return await this._execute(options, commands);
+    } finally {
+      resolveCurrent();
+      // Clean up queue entry if no more callers are waiting
+      if (routerQueues.get(key) === current) routerQueues.delete(key);
+    }
+  }
+
+  private async _execute(options: RouterOsOptions, commands: string[][]): Promise<RouterOsResponse[][]> {
     return new Promise((resolve, reject) => {
-      const { host, port = 8728, user, password, timeout = 10000 } = options;
-      const socket = new net.Socket();
+      const { host, port: rawPort, user, password, timeout = 10000, useTls } = options;
+      const port = rawPort ?? (useTls ? 8729 : 8728); // eslint-disable-line @typescript-eslint/no-unused-vars
+
+      const socket: net.Socket = useTls
+        ? tls.connect({ host, port, rejectUnauthorized: false }) // self-signed certs are common on MikroTik
+        : net.createConnection({ host, port });
+
       const results: RouterOsResponse[][] = [];
       let buffer = Buffer.alloc(0);
       let authenticated = false;
@@ -30,11 +72,23 @@ export class RouterOsApiService {
 
       const timer = setTimeout(() => {
         socket.destroy();
-        reject(new Error("RouterOS API connection timeout"));
+        reject(new Error(`RouterOS API timeout connecting to ${host}:${port}`));
       }, timeout);
 
-      socket.connect(port, host, () => {
+      const done = (err?: Error) => {
+        clearTimeout(timer);
+        socket.destroy();
+        if (err) reject(err);
+        else resolve(results);
+      };
+
+      socket.on("connect", () => {
         sendSentence(["/login", `=name=${user}`, `=password=${password}`]);
+      });
+
+      // tls.TLSSocket emits 'secureConnect' not 'connect' in some Node versions
+      (socket as tls.TLSSocket).on?.("secureConnect", () => {
+        if (!authenticated) sendSentence(["/login", `=name=${user}`, `=password=${password}`]);
       });
 
       socket.on("data", (data: Buffer) => {
@@ -42,14 +96,9 @@ export class RouterOsApiService {
         processBuffer();
       });
 
-      socket.on("error", (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-
+      socket.on("error", (err) => done(err));
       socket.on("close", () => {
-        clearTimeout(timer);
-        if (!authenticated) reject(new Error("Connection closed before auth"));
+        if (!authenticated) done(new Error("Connection closed before authentication"));
       });
 
       function processBuffer() {
@@ -68,17 +117,14 @@ export class RouterOsApiService {
               if (commands.length > 0) {
                 sendCommand(commands[commandIndex]);
               } else {
-                socket.destroy();
-                resolve(results);
+                done();
               }
             } else {
               commandIndex++;
               if (commandIndex < commands.length) {
                 sendCommand(commands[commandIndex]);
               } else {
-                socket.destroy();
-                clearTimeout(timer);
-                resolve(results);
+                done();
               }
             }
           } else if (word === "!re") {
@@ -88,9 +134,7 @@ export class RouterOsApiService {
             const [key, ...vals] = word.slice(1).split("=");
             currentItem[key] = vals.join("=");
           } else if (word === "!trap" || word.startsWith("!trap")) {
-            clearTimeout(timer);
-            socket.destroy();
-            reject(new Error(`RouterOS API error: ${word}`));
+            done(new Error(`RouterOS API error: ${word}`));
           }
         }
       }

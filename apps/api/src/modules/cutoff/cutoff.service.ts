@@ -5,6 +5,7 @@ import { Queue } from "bull";
 import { PrismaService } from "../../config/prisma.service";
 import { MikrotikService } from "../mikrotik/mikrotik.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { BillingService } from "../billing/billing.service";
 import { SubscriberStatus } from "@isp/database";
 import { SuspendJobData } from "./suspend.processor";
 
@@ -16,6 +17,7 @@ export class CutoffService {
     private prisma: PrismaService,
     private mikrotik: MikrotikService,
     private notifications: NotificationsService,
+    private billing: BillingService,
     @InjectQueue("suspend") private suspendQueue: Queue<SuspendJobData>
   ) {}
 
@@ -101,6 +103,27 @@ export class CutoffService {
         this.logger.error(`Expiry reminders failed for tenant ${tenant.id}:`, err)
       );
     }
+  }
+
+  /** Every day at 6am: generate renewal invoices for subscribers expiring within 3 days */
+  @Cron("0 6 * * *")
+  async generateRenewalInvoices() {
+    const tenants = await this.prisma.tenant.findMany({
+      where: { isActive: true },
+      select: { id: true },
+    });
+
+    let total = 0;
+    for (const tenant of tenants) {
+      try {
+        const { created } = await this.billing.generateRecurringInvoices(tenant.id);
+        total += created;
+      } catch (err) {
+        this.logger.error(`Renewal invoice generation failed for tenant ${tenant.id}:`, err);
+      }
+    }
+
+    if (total > 0) this.logger.log(`Generated ${total} renewal invoice(s)`);
   }
 
   /** Every 5 minutes: poll router health */

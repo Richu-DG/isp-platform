@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  freeradius:
+    image: freeradius/freeradius-server:latest
+    container_name: isp-freeradius
+    restart: unless-stopped
+    network_mode: host          # NAS devices must reach RADIUS on 1812/1813 UDP
+    environment:
+      - TZ=Africa/Nairobi
+    volumes:
+      - ./mods-enabled/sql:/etc/freeradius/3.0/mods-enabled/sql:ro
+      - ./sites-enabled/default:/etc/freeradius/3.0/sites-enabled/default:ro
+      - ./radiusd.conf:/etc/freeradius/3.0/radiusd.conf:ro
+      - freeradius-logs:/var/log/freeradius
+    ports:
+      - "1812:1812/udp"   # Auth
+      - "1813:1813/udp"   # Accounting
+    healthcheck:
+      test: ["CMD", "radtest", "health", "check", "127.0.0.1", "0", "testing123"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  freeradius-logs:

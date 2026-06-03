@@ -20,6 +20,7 @@ import { MonitoringModule } from "./modules/monitoring/monitoring.module";
 import { TicketsModule } from "./modules/tickets/tickets.module";
 import { ReportsModule } from "./modules/reports/reports.module";
 import { PrismaModule } from "./config/prisma.module";
+import { EncryptionModule } from "./common/encryption/encryption.module";
 import { CutoffModule } from "./modules/cutoff/cutoff.module";
 import { PortalModule } from "./modules/portal/portal.module";
 import { HealthController } from "./modules/health/health.controller";
@@ -47,6 +48,7 @@ import { HealthController } from "./modules/health/health.controller";
       }),
     }),
     PrismaModule,
+    EncryptionModule,
     AuthModule,
     TenantsModule,
     SubscribersModule,

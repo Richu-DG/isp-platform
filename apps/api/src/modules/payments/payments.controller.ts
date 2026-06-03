@@ -5,6 +5,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Public } from "../auth/decorators/public.decorator";
+import { MpesaIpGuard } from "../../common/guards/mpesa-ip.guard";
 import { StkPushDto, MpesaC2bConfirmDto, MpesaC2bValidationDto } from "./dto/payment.dto";
 
 @ApiTags("payments")
@@ -22,6 +23,7 @@ export class PaymentsController {
 
   @Post("mpesa/stk-callback")
   @Public()
+  @UseGuards(MpesaIpGuard)
   @HttpCode(200)
   @ApiOperation({ summary: "M-Pesa STK Push callback (webhook)" })
   stkCallback(@Body() body: any) {
@@ -30,6 +32,7 @@ export class PaymentsController {
 
   @Post("mpesa/c2b-validation")
   @Public()
+  @UseGuards(MpesaIpGuard)
   @HttpCode(200)
   @ApiOperation({ summary: "M-Pesa C2B validation URL" })
   c2bValidation(@Body() dto: MpesaC2bValidationDto) {
@@ -38,6 +41,7 @@ export class PaymentsController {
 
   @Post("mpesa/c2b-confirmation")
   @Public()
+  @UseGuards(MpesaIpGuard)
   @HttpCode(200)
   @ApiOperation({ summary: "M-Pesa C2B confirmation URL" })
   c2bConfirmation(@Body() dto: MpesaC2bConfirmDto) {
