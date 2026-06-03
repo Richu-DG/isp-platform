@@ -1,26 +1,29 @@
 version: "3.9"
 
+# Central FreeRADIUS server for all ISP clients.
+# Deploy this on a VPS with a public IP.
+# All ISP clients' MikroTik routers point to this server's IP for RADIUS accounting.
+#
+# Ports required (open in firewall/VPS security group):
+#   1812/udp — RADIUS Authentication
+#   1813/udp — RADIUS Accounting
+
 services:
   freeradius:
-    image: freeradius/freeradius-server:latest
+    image: freeradius/freeradius-server:3.2.3
     container_name: isp-freeradius
     restart: unless-stopped
-    network_mode: host          # NAS devices must reach RADIUS on 1812/1813 UDP
+    network_mode: host
     environment:
       - TZ=Africa/Nairobi
     volumes:
-      - ./mods-enabled/sql:/etc/freeradius/3.0/mods-enabled/sql:ro
-      - ./sites-enabled/default:/etc/freeradius/3.0/sites-enabled/default:ro
       - ./radiusd.conf:/etc/freeradius/3.0/radiusd.conf:ro
+      - ./mods-available/sql:/etc/freeradius/3.0/mods-available/sql:ro
+      - ./mods-enabled/sql:/etc/freeradius/3.0/mods-enabled/sql:ro
+      - ./sites-available/default:/etc/freeradius/3.0/sites-available/default:ro
+      - ./sites-available/inner-tunnel:/etc/freeradius/3.0/sites-available/inner-tunnel:ro
+      - ./clients.conf:/etc/freeradius/3.0/clients.conf:ro
       - freeradius-logs:/var/log/freeradius
-    ports:
-      - "1812:1812/udp"   # Auth
-      - "1813:1813/udp"   # Accounting
-    healthcheck:
-      test: ["CMD", "radtest", "health", "check", "127.0.0.1", "0", "testing123"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
 volumes:
   freeradius-logs:
