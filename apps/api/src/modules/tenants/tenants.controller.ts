@@ -21,5 +21,7 @@ export class TenantsController {
   @Put(":id") @Roles(Role.SUPER_ADMIN) update(@Param("id") id: string, @Body() d: any) { return this.s.update(id, d); }
   @Patch(":id/suspend") @Roles(Role.SUPER_ADMIN) suspend(@Param("id") id: string) { return this.s.suspendTenant(id); }
   @Patch(":id/activate") @Roles(Role.SUPER_ADMIN) activate(@Param("id") id: string) { return this.s.activateTenant(id); }
+  @Get("mpesa-config") getMpesaConfig(@CurrentUser("tenantId") id: string) { return this.s.getMpesaConfig(id); }
+  @Patch("mpesa-config") saveMpesaConfig(@CurrentUser("tenantId") id: string, @Body() d: any) { return this.s.saveMpesaConfig(id, d); }
   @Patch("settings") updateSettings(@CurrentUser("tenantId") id: string, @Body() d: any) { return this.s.updateSettings(id, d); }
 }

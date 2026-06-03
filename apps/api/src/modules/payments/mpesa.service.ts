@@ -46,36 +46,56 @@ export class MpesaService {
     amount: number,
     accountRef: string,
     description: string,
-    callbackUrl?: string
+    callbackUrl?: string,
+    tenantCreds?: { consumerKey: string; consumerSecret: string; shortcode: string; passkey: string; environment?: string }
   ): Promise<MpesaStkPushResponse> {
-    const token = await this.getToken();
+    const creds = tenantCreds ?? {
+      consumerKey: this.consumerKey,
+      consumerSecret: this.consumerSecret,
+      shortcode: this.shortcode,
+      passkey: this.passkey,
+      environment: this.env,
+    };
+
+    const http = tenantCreds
+      ? axios.create({
+          baseURL: tenantCreds.environment === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke",
+          timeout: 30000,
+        })
+      : this.http;
+
+    const tokenRes = await http.get("/oauth/v1/generate?grant_type=client_credentials", {
+      headers: { Authorization: `Basic ${Buffer.from(`${creds.consumerKey}:${creds.consumerSecret}`).toString("base64")}` },
+    });
+    const token = tokenRes.data.access_token;
+
     const timestamp = new Date()
       .toISOString()
       .replace(/[-T:.Z]/g, "")
       .slice(0, 14);
 
     const password = Buffer.from(
-      `${this.shortcode}${this.passkey}${timestamp}`
+      `${creds.shortcode}${creds.passkey}${timestamp}`
     ).toString("base64");
 
     const phone = this.normalizePhone(phoneNumber);
     const cb = callbackUrl ?? this.config.get("MPESA_STK_CALLBACK_URL");
 
     const payload = {
-      BusinessShortCode: this.shortcode,
+      BusinessShortCode: creds.shortcode,
       Password: password,
       Timestamp: timestamp,
       TransactionType: "CustomerPayBillOnline",
       Amount: Math.ceil(amount),
       PartyA: phone,
-      PartyB: this.shortcode,
+      PartyB: creds.shortcode,
       PhoneNumber: phone,
       CallBackURL: cb,
       AccountReference: accountRef.substring(0, 12),
       TransactionDesc: description.substring(0, 13),
     };
 
-    const { data } = await this.http.post<MpesaStkPushResponse>(
+    const { data } = await http.post<MpesaStkPushResponse>(
       "/mpesa/stkpush/v1/processrequest",
       payload,
       { headers: { Authorization: `Bearer ${token}` } }

@@ -57,4 +57,38 @@ export class TenantsService {
   async activateTenant(id: string) {
     return this.prisma.tenant.update({ where: { id }, data: { isActive: true } });
   }
+
+  async getMpesaConfig(tenantId: string) {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { mpesaConfig: true } });
+    const cfg = t?.mpesaConfig as any ?? {};
+    return {
+      shortcode: cfg.shortcode ?? "",
+      consumerKey: cfg.consumerKey ?? "",
+      consumerKeyMasked: cfg.consumerKey ? `${String(cfg.consumerKey).slice(0, 4)}${"*".repeat(12)}` : "",
+      consumerSecretSet: !!cfg.consumerSecret,
+      passkeySet: !!cfg.passkey,
+      environment: cfg.environment ?? "production",
+      smsUsername: cfg.smsUsername ?? "",
+      smsApiKeySet: !!cfg.smsApiKey,
+      smsSenderId: cfg.smsSenderId ?? "",
+    };
+  }
+
+  async saveMpesaConfig(tenantId: string, body: any) {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { mpesaConfig: true } });
+    const existing = t?.mpesaConfig as any ?? {};
+    const updated = {
+      ...existing,
+      shortcode: body.shortcode ?? existing.shortcode,
+      environment: body.environment ?? existing.environment ?? "production",
+      ...(body.consumerKey ? { consumerKey: body.consumerKey } : {}),
+      ...(body.consumerSecret ? { consumerSecret: body.consumerSecret } : {}),
+      ...(body.passkey ? { passkey: body.passkey } : {}),
+      ...(body.smsUsername !== undefined ? { smsUsername: body.smsUsername } : {}),
+      ...(body.smsApiKey ? { smsApiKey: body.smsApiKey } : {}),
+      ...(body.smsSenderId !== undefined ? { smsSenderId: body.smsSenderId } : {}),
+    };
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { mpesaConfig: updated } });
+    return { saved: true };
+  }
 }

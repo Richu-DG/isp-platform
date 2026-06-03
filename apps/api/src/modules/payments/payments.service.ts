@@ -18,20 +18,31 @@ export class PaymentsService {
   ) {}
 
   async initiateStkPush(tenantId: string, dto: StkPushDto) {
-    const subscriber = await this.prisma.subscriber.findFirst({
-      where: { id: dto.subscriberId, tenantId },
-      include: { package: true },
-    });
+    const [subscriber, tenant] = await Promise.all([
+      this.prisma.subscriber.findFirst({ where: { id: dto.subscriberId, tenantId }, include: { package: true } }),
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { mpesaConfig: true } }),
+    ]);
     if (!subscriber) throw new NotFoundException("Subscriber not found");
 
     const amount = dto.amount ?? Number(subscriber.package?.price ?? 0);
     if (amount <= 0) throw new BadRequestException("Invalid amount");
 
+    const mpesaCfg = tenant?.mpesaConfig as any;
+    const tenantCreds = mpesaCfg?.consumerKey ? {
+      consumerKey: mpesaCfg.consumerKey,
+      consumerSecret: mpesaCfg.consumerSecret,
+      shortcode: mpesaCfg.shortcode,
+      passkey: mpesaCfg.passkey,
+      environment: mpesaCfg.environment ?? "production",
+    } : undefined;
+
     const response = await this.mpesa.stkPush(
       dto.phoneNumber ?? subscriber.phone,
       amount,
       subscriber.phone.slice(-6),
-      `Internet - ${subscriber.username}`
+      `Internet - ${subscriber.username}`,
+      undefined,
+      tenantCreds
     );
 
     if (response.ResponseCode !== "0") {
