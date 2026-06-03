@@ -31,7 +31,8 @@ export default function LoginPage() {
     try {
       await login(data.email, data.password, data.mfaCode || undefined);
       toast.success("Welcome back!");
-      router.push("/dashboard");
+      const { user: loggedInUser } = useAuthStore.getState();
+      router.push(loggedInUser?.role === "SUPER_ADMIN" ? "/dashboard/super" : "/dashboard");
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? "";
       if (msg.includes("MFA") || err?.response?.data?.requiresMfa) {

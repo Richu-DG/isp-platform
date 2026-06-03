@@ -36,4 +36,25 @@ export class TenantsService {
     const tenant = await this.findOne(id);
     return this.prisma.tenant.update({ where: { id }, data: { settings: { ...(tenant.settings as any), ...settings } } });
   }
+
+  async getPlatformStats() {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const [tenants, subscribers, users, revenue, newThisMonth] = await Promise.all([
+      this.prisma.tenant.count(),
+      this.prisma.subscriber.count(),
+      this.prisma.user.count({ where: { role: { not: "SUPER_ADMIN" as any } } }),
+      this.prisma.invoice.aggregate({ _sum: { total: true }, where: { status: "PAID" as any } }),
+      this.prisma.tenant.count({ where: { createdAt: { gte: monthStart } } }),
+    ]);
+    return { tenants, subscribers, users, totalRevenue: Number(revenue._sum.total ?? 0), newTenantsThisMonth: newThisMonth };
+  }
+
+  async suspendTenant(id: string) {
+    return this.prisma.tenant.update({ where: { id }, data: { isActive: false } });
+  }
+
+  async activateTenant(id: string) {
+    return this.prisma.tenant.update({ where: { id }, data: { isActive: true } });
+  }
 }

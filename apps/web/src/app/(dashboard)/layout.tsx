@@ -9,6 +9,7 @@ import {
   Menu, X, ChevronRight, ChevronDown, Search,
   Activity, BarChart3, Router, Network, Database,
   Receipt, UserCheck, AlertCircle, Server, Globe,
+  Building2, ShieldCheck, PlusCircle,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { clsx } from "clsx";
@@ -38,6 +39,16 @@ const NAV = [
   },
   { href: "/dashboard/reports", label: "Reports", icon: BarChart3 },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
+];
+
+const SUPER_ADMIN_NAV = [
+  { href: "/dashboard/super", label: "Platform Overview", icon: ShieldCheck },
+  {
+    label: "ISP Clients", icon: Building2, children: [
+      { href: "/dashboard/super/tenants", label: "All Clients" },
+      { href: "/dashboard/super/tenants/new", label: "Add Client" },
+    ],
+  },
 ];
 
 function NavItem({ item, depth = 0 }: { item: any; depth?: number }) {
@@ -102,15 +113,19 @@ function NavItem({ item, depth = 0 }: { item: any; depth?: number }) {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, isAuthenticated, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState("");
   const now = new Date();
   const timeStr = now.toLocaleTimeString("en-KE", { hour: "2-digit", minute: "2-digit" });
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const activeNav = isSuperAdmin ? SUPER_ADMIN_NAV : NAV;
 
   useEffect(() => {
     if (!isAuthenticated) router.replace("/auth/login");
-  }, [isAuthenticated, router]);
+    else if (isSuperAdmin && pathname === "/dashboard") router.replace("/dashboard/super");
+  }, [isAuthenticated, isSuperAdmin, pathname, router]);
 
   if (!isAuthenticated) return null;
 
@@ -131,12 +146,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       >
         {/* Logo */}
         <div className="flex items-center gap-2.5 border-b px-4 py-3.5" style={{ borderColor: "var(--sidebar-border)" }}>
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
-            <Wifi className="h-4 w-4 text-white" />
+          <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${isSuperAdmin ? "bg-purple-600" : "bg-blue-600"}`}>
+            {isSuperAdmin ? <ShieldCheck className="h-4 w-4 text-white" /> : <Wifi className="h-4 w-4 text-white" />}
           </div>
           <div>
-            <p className="text-sm font-bold text-white leading-tight">ISP Manager</p>
-            <p className="text-[10px] text-slate-400">Kenya Billing</p>
+            <p className="text-sm font-bold text-white leading-tight">{isSuperAdmin ? "Super Admin" : "ISP Manager"}</p>
+            <p className="text-[10px] text-slate-400">{isSuperAdmin ? "Platform Control" : "Kenya Billing"}</p>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="ml-auto text-slate-400 hover:text-white lg:hidden">
             <X className="h-4 w-4" />
@@ -158,7 +173,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Nav */}
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
-          {NAV.map((item, i) => <NavItem key={i} item={item} />)}
+          {activeNav.map((item, i) => <NavItem key={i} item={item} />)}
         </nav>
 
         {/* User */}

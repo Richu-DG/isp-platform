@@ -31,7 +31,7 @@ export class AuthService {
       throw new UnauthorizedException("Invalid credentials");
     }
 
-    if (!user.tenant.isActive) {
+    if (!user.tenant.isActive && user.role !== "SUPER_ADMIN") {
       throw new UnauthorizedException("Tenant account is suspended");
     }
 
