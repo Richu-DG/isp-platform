@@ -7,7 +7,7 @@ import {
 import bcrypt from "bcryptjs";
 import { PrismaService } from "../../config/prisma.service";
 import { CreateSubscriberDto, UpdateSubscriberDto, AssignPackageDto } from "./dto/subscriber.dto";
-import { SubscriberStatus } from "@isp/database";
+import { SubscriberStatus, ConnectionType } from "@isp/database";
 import { PaginationQuery } from "@isp/shared";
 import { MikrotikService } from "../mikrotik/mikrotik.service";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -110,7 +110,11 @@ export class SubscribersService {
   async suspend(tenantId: string, id: string, reason: string) {
     const subscriber = await this.ensureExists(tenantId, id);
 
-    await this.mikrotik.disconnectUser(tenantId, subscriber.username).catch(() => {});
+    if (subscriber.connectionType === ConnectionType.PPPOE) {
+      await this.mikrotik.disablePppoeUser(tenantId, subscriber.username).catch(() => {});
+    } else {
+      await this.mikrotik.disconnectUser(tenantId, subscriber.username).catch(() => {});
+    }
 
     return this.prisma.subscriber.update({
       where: { id },
@@ -127,10 +131,17 @@ export class SubscribersService {
         ? SubscriberStatus.ACTIVE
         : SubscriberStatus.EXPIRED;
 
-    return this.prisma.subscriber.update({
+    const updated = await this.prisma.subscriber.update({
       where: { id },
       data: { status: newStatus, suspendReason: null },
+      include: { package: true },
     });
+
+    if (newStatus === SubscriberStatus.ACTIVE && subscriber.connectionType === ConnectionType.PPPOE) {
+      await this.mikrotik.enablePppoeUser(tenantId, subscriber.username, updated.package?.mikrotikProfile ?? "default").catch(() => {});
+    }
+
+    return updated;
   }
 
   async assignPackage(tenantId: string, id: string, dto: AssignPackageDto) {
@@ -167,7 +178,11 @@ export class SubscribersService {
       include: { package: true },
     });
 
-    await this.mikrotik.activateUser(tenantId, subscriber.username, pkg.mikrotikProfile ?? "default").catch(() => {});
+    if (subscriber.connectionType === ConnectionType.PPPOE) {
+      await this.mikrotik.createPppoeUser(tenantId, subscriber.username, subscriber.password, pkg.mikrotikProfile ?? "default").catch(() => {});
+    } else {
+      await this.mikrotik.activateUser(tenantId, subscriber.username, pkg.mikrotikProfile ?? "default").catch(() => {});
+    }
     await this.notifications.sendAccountActivated(tenantId, id).catch(() => {});
 
     return updated;
@@ -175,7 +190,11 @@ export class SubscribersService {
 
   async disconnect(tenantId: string, id: string) {
     const subscriber = await this.ensureExists(tenantId, id);
-    await this.mikrotik.disconnectUser(tenantId, subscriber.username);
+    if (subscriber.connectionType === ConnectionType.PPPOE) {
+      await this.mikrotik.disablePppoeUser(tenantId, subscriber.username).catch(() => {});
+    } else {
+      await this.mikrotik.disconnectUser(tenantId, subscriber.username).catch(() => {});
+    }
     return { disconnected: true };
   }
 

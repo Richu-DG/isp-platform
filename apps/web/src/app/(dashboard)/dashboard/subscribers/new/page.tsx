@@ -14,6 +14,7 @@ export default function NewSubscriberPage() {
     fullName: "", phone: "", email: "", nationalId: "",
     address: "", apartmentNumber: "", notes: "",
     username: "", password: "", packageId: "", autoRenew: false,
+    connectionType: "HOTSPOT", staticIp: "",
   });
 
   const { data: packages = [] } = useQuery({ queryKey: ["packages"], queryFn: () => api.get("/packages").then(r => r.data) });
@@ -68,12 +69,33 @@ export default function NewSubscriberPage() {
             </div>
           </Widget>
 
-          <Widget title="Login Credentials">
-            <div className="grid grid-cols-2 gap-4">
-              {fld("RADIUS Username", "username", "text", "johndoe", true)}
-              {fld("Password", "password", "password", "Min 6 chars", true)}
+          <Widget title="Connection Type & Credentials">
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-600 mb-2">Connection Type <span className="text-red-500">*</span></label>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { val: "HOTSPOT", label: "Hotspot / Wi-Fi", desc: "Captive portal, vouchers, prepaid" },
+                  { val: "PPPOE", label: "PPPoE / Wired", desc: "Ethernet to home, monthly billing" },
+                ].map(o => (
+                  <button key={o.val} type="button"
+                    onClick={() => setForm(f => ({ ...f, connectionType: o.val }))}
+                    className={`rounded-xl border-2 p-3 text-left transition-colors ${form.connectionType === o.val ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}>
+                    <p className={`text-sm font-bold ${form.connectionType === o.val ? "text-blue-700" : "text-gray-700"}`}>{o.label}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{o.desc}</p>
+                  </button>
+                ))}
+              </div>
             </div>
-            <p className="mt-3 text-xs text-gray-400">These credentials are used for Wi-Fi hotspot login and FreeRADIUS authentication.</p>
+            <div className="grid grid-cols-2 gap-4">
+              {fld("Username", "username", "text", form.connectionType === "PPPOE" ? "PPPoE username" : "johndoe", true)}
+              {fld("Password", "password", "password", "Min 6 chars", true)}
+              {form.connectionType === "PPPOE" && fld("Static IP (optional)", "staticIp", "text", "e.g. 192.168.1.10")}
+            </div>
+            <p className="mt-3 text-xs text-gray-400">
+              {form.connectionType === "PPPOE"
+                ? "PPPoE: credentials provisioned directly to MikroTik PPP secrets. Subscriber dials with their router."
+                : "Hotspot: credentials used for captive portal login and FreeRADIUS authentication."}
+            </p>
           </Widget>
         </div>
 

@@ -109,16 +109,59 @@ export class MikrotikService {
 
     for (const router of routers) {
       try {
-        await this.exec(router, [
-          [
-            "/ppp/secret/add",
-            `=name=${username}`,
-            `=password=${password}`,
-            `=profile=${profile}`,
-            "=service=pppoe",
-          ],
-        ]);
-      } catch {}
+        await this.exec(router, [[
+          "/ppp/secret/add",
+          `=name=${username}`, `=password=${password}`,
+          `=profile=${profile}`, "=service=pppoe", "=disabled=no",
+        ]]);
+      } catch {
+        // Secret may already exist — update it instead
+        await this.exec(router, [[
+          "/ppp/secret/set",
+          `=.id=[/ppp/secret/find name=${username}]`,
+          `=password=${password}`, `=profile=${profile}`, "=disabled=no",
+        ]]).catch(() => {});
+      }
+    }
+  }
+
+  async disablePppoeUser(tenantId: string, username: string) {
+    const routers = await this.prisma.router.findMany({ where: { tenantId } });
+
+    for (const router of routers) {
+      try {
+        // Kill the active session first so traffic stops immediately
+        await this.exec(router, [[
+          "/ppp/active/remove",
+          `=.id=[/ppp/active/find name=${username}]`,
+        ]]).catch(() => {});
+        // Disable the PPP secret so re-auth is rejected
+        await this.exec(router, [[
+          "/ppp/secret/set",
+          `=.id=[/ppp/secret/find name=${username}]`,
+          "=disabled=yes",
+        ]]);
+        this.logger.log(`Disabled PPPoE user ${username} on ${router.name}`);
+      } catch {
+        this.logger.warn(`Could not disable PPPoE user ${username} on ${router.name}`);
+      }
+    }
+  }
+
+  async enablePppoeUser(tenantId: string, username: string, profile: string) {
+    const routers = await this.prisma.router.findMany({ where: { tenantId } });
+
+    for (const router of routers) {
+      try {
+        await this.exec(router, [[
+          "/ppp/secret/set",
+          `=.id=[/ppp/secret/find name=${username}]`,
+          `=profile=${profile}`, "=disabled=no",
+        ]]);
+        this.logger.log(`Enabled PPPoE user ${username} on ${router.name}`);
+      } catch {
+        this.logger.warn(`Could not enable PPPoE user ${username} on ${router.name}`);
+      }
     }
   }
 

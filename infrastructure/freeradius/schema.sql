@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS radcheck (
     username VARCHAR(64) NOT NULL DEFAULT '',
     attribute VARCHAR(64) NOT NULL DEFAULT '',
     op CHAR(2) NOT NULL DEFAULT '==',
-    value VARCHAR(253) NOT NULL DEFAULT ''
+    value VARCHAR(253) NOT NULL DEFAULT '',
+    CONSTRAINT radcheck_username_attribute UNIQUE (username, attribute)
 );
 CREATE INDEX IF NOT EXISTS radcheck_username ON radcheck (username);
 
@@ -58,7 +59,7 @@ CREATE TABLE IF NOT EXISTS radacct (
     acctupdatetime TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     acctstoptime TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     acctinterval INTEGER DEFAULT NULL,
-    acctsessiontime INTEGER UNSIGNED DEFAULT NULL,
+    acctsessiontime INTEGER DEFAULT NULL,
     acctauthentic VARCHAR(32) DEFAULT NULL,
     connectinfo_start VARCHAR(50) DEFAULT NULL,
     connectinfo_stop VARCHAR(50) DEFAULT NULL,
@@ -87,20 +88,27 @@ CREATE TABLE IF NOT EXISTS radpostauth (
 );
 CREATE INDEX IF NOT EXISTS radpostauth_username ON radpostauth (username);
 
--- Helper view to sync with ISP platform subscribers
--- When a subscriber is activated/expired, update radcheck accordingly
+-- Sync subscribers table → radcheck on status change
+-- Only syncs PPPoE subscribers; hotspot auth is handled by MikroTik hotspot directly
 CREATE OR REPLACE FUNCTION sync_radius_user()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF NEW.status = 'ACTIVE' THEN
-        -- Add/update Cleartext-Password in radcheck
-        INSERT INTO radcheck (username, attribute, op, value)
-        VALUES (NEW.username, 'Cleartext-Password', ':=', NEW.password)
-        ON CONFLICT (username) DO UPDATE SET value = EXCLUDED.value;
-    ELSE
-        -- Remove from radcheck to deny access
-        DELETE FROM radcheck WHERE username = NEW.username AND attribute = 'Cleartext-Password';
+    IF NEW."connectionType" = 'PPPOE' THEN
+        IF NEW.status = 'ACTIVE' THEN
+            INSERT INTO radcheck (username, attribute, op, value)
+            VALUES (NEW.username, 'Cleartext-Password', ':=', NEW.password)
+            ON CONFLICT (username, attribute) DO UPDATE SET value = EXCLUDED.value;
+        ELSE
+            DELETE FROM radcheck WHERE username = NEW.username AND attribute = 'Cleartext-Password';
+        END IF;
     END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_sync_radius_user ON subscribers;
+CREATE TRIGGER trg_sync_radius_user
+    AFTER INSERT OR UPDATE OF status, password, "connectionType"
+    ON subscribers
+    FOR EACH ROW
+    EXECUTE FUNCTION sync_radius_user();

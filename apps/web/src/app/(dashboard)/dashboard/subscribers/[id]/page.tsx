@@ -72,9 +72,11 @@ export default function SubscriberDetailPage() {
               {[
                 [Phone, "Phone", sub.phone],
                 [Mail, "Email", sub.email || "—"],
+                [Wifi, "Connection", sub.connectionType === "PPPOE" ? "PPPoE / Wired" : "Hotspot / Wi-Fi"],
                 [UserCheck, "National ID", sub.nationalId || "—"],
                 [UserCheck, "Address", sub.address || "—"],
                 [UserCheck, "Unit", sub.apartmentNumber || "—"],
+                ...(sub.staticIp ? [[UserCheck, "Static IP", sub.staticIp]] : []),
               ].map(([Icon, label, val]) => (
                 <div key={label as string} className="flex items-start gap-2.5">
                   <span className="mt-0.5 rounded-lg bg-gray-100 p-1.5"><Icon className="h-3 w-3 text-gray-500" /></span>
