@@ -174,9 +174,6 @@ importers:
       '@hookform/resolvers':
         specifier: ^3.6.0
         version: 3.10.0(react-hook-form@7.77.0(react@18.3.1))
-      '@isp/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@tanstack/react-query':
         specifier: ^5.40.1
         version: 5.100.14(react@18.3.1)
@@ -238,9 +235,6 @@ importers:
       '@hookform/resolvers':
         specifier: ^3.6.0
         version: 3.10.0(react-hook-form@7.77.0(react@18.3.1))
-      '@isp/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@radix-ui/react-avatar':
         specifier: ^1.1.0
         version: 1.1.11(@types/react-dom@18.3.7(@types/react@18.3.30))(@types/react@18.3.30)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
