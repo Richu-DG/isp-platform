@@ -254,6 +254,65 @@ export class MikrotikService {
     }
   }
 
+  // ─── Usage Polling (replaces FreeRADIUS accounting) ──────────────────────────
+
+  /**
+   * Fetch live byte counts for all active PPPoE + hotspot sessions on a router.
+   * Called every 5 minutes by CutoffService to update dataUsed without RADIUS.
+   */
+  async fetchActiveUsage(router: any): Promise<Array<{
+    username: string;
+    bytesIn: bigint;
+    bytesOut: bigint;
+    ip: string;
+    connectionType: "PPPOE" | "HOTSPOT";
+    uptime: string;
+  }>> {
+    const results: Array<{
+      username: string; bytesIn: bigint; bytesOut: bigint;
+      ip: string; connectionType: "PPPOE" | "HOTSPOT"; uptime: string;
+    }> = [];
+
+    try {
+      const [pppoe, hotspot] = await Promise.all([
+        this.exec(router, [["/ppp/active/print"]]).catch(() => [[]]),
+        this.exec(router, [["/ip/hotspot/active/print"]]).catch(() => [[]]),
+      ]);
+
+      for (const session of (pppoe[0] ?? [])) {
+        if (!session["name"]) continue;
+        results.push({
+          username: session["name"],
+          bytesIn: BigInt(session["bytes-in"] ?? "0"),
+          bytesOut: BigInt(session["bytes-out"] ?? "0"),
+          ip: session["address"] ?? "",
+          connectionType: "PPPOE",
+          uptime: session["uptime"] ?? "",
+        });
+      }
+
+      for (const session of (hotspot[0] ?? [])) {
+        if (!session["user"]) continue;
+        results.push({
+          username: session["user"],
+          bytesIn: BigInt(session["bytes-in"] ?? "0"),
+          bytesOut: BigInt(session["bytes-out"] ?? "0"),
+          ip: session["address"] ?? "",
+          connectionType: "HOTSPOT",
+          uptime: session["uptime"] ?? "",
+        });
+      }
+    } catch (err) {
+      this.logger.warn(`Usage poll failed for router ${router.id}: ${(err as Error).message}`);
+    }
+
+    return results;
+  }
+
+  async fetchAllOnlineRouters(): Promise<any[]> {
+    return this.prisma.router.findMany({ where: { isOnline: true } });
+  }
+
   // ─── Helpers ──────────────────────────────────────────────
 
   private async ensureRouter(tenantId: string, id: string) {

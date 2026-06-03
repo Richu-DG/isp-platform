@@ -126,6 +126,71 @@ export class CutoffService {
     if (total > 0) this.logger.log(`Generated ${total} renewal invoice(s)`);
   }
 
+  /** Every 5 minutes: poll live byte counts from MikroTik and update dataUsed */
+  @Cron("*/5 * * * *")
+  async pollActiveSessionUsage() {
+    const routers = await this.mikrotik.fetchAllOnlineRouters();
+    if (routers.length === 0) return;
+
+    for (const router of routers) {
+      try {
+        const sessions = await this.mikrotik.fetchActiveUsage(router);
+
+        for (const s of sessions) {
+          const subscriber = await this.prisma.subscriber.findFirst({
+            where: { username: s.username, tenantId: router.tenantId, status: SubscriberStatus.ACTIVE },
+            select: { id: true, dataUsed: true, dataLimit: true },
+          });
+          if (!subscriber) continue;
+
+          // Find the current active session in DB to compute delta
+          const activeSession = await this.prisma.session.findFirst({
+            where: { username: s.username, isActive: true },
+            orderBy: { startTime: "desc" },
+          });
+
+          let deltaBytes = BigInt(0);
+
+          if (activeSession) {
+            const prevTotal = (activeSession.uploadBytes ?? BigInt(0)) + (activeSession.downloadBytes ?? BigInt(0));
+            const currTotal = s.bytesIn + s.bytesOut;
+
+            // If current < previous, the session restarted — treat current as full delta
+            deltaBytes = currTotal >= prevTotal ? currTotal - prevTotal : currTotal;
+
+            await this.prisma.session.update({
+              where: { id: activeSession.id },
+              data: { uploadBytes: s.bytesIn, downloadBytes: s.bytesOut, framedIpAddress: s.ip },
+            });
+          } else {
+            // New session not yet tracked — create it and count all bytes as new usage
+            deltaBytes = s.bytesIn + s.bytesOut;
+            await this.prisma.session.create({
+              data: {
+                subscriberId: subscriber.id,
+                username: s.username,
+                nasIpAddress: router.ipAddress,
+                framedIpAddress: s.ip,
+                uploadBytes: s.bytesIn,
+                downloadBytes: s.bytesOut,
+                isActive: true,
+              },
+            });
+          }
+
+          if (deltaBytes > BigInt(0)) {
+            await this.prisma.subscriber.update({
+              where: { id: subscriber.id },
+              data: { dataUsed: { increment: deltaBytes } },
+            });
+          }
+        }
+      } catch (err) {
+        this.logger.error(`Usage poll error for router ${router.id}: ${(err as Error).message}`);
+      }
+    }
+  }
+
   /** Every 5 minutes: poll router health */
   @Cron("*/5 * * * *")
   async pollRouterHealth() {
