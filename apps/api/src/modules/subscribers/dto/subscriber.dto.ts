@@ -10,7 +10,7 @@ import {
   MinLength,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional, PartialType } from "@nestjs/swagger";
-import { SubscriberStatus } from "@isp/database";
+import { SubscriberStatus, ConnectionType } from "@isp/database";
 import { PaginationQuery } from "@isp/shared";
 
 export class CreateSubscriberDto {
@@ -25,6 +25,7 @@ export class CreateSubscriberDto {
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
   @ApiProperty() @IsString() username: string;
   @ApiProperty() @IsString() @MinLength(6) password: string;
+  @ApiPropertyOptional() @IsOptional() @IsEnum(ConnectionType) connectionType?: ConnectionType;
   @ApiPropertyOptional() @IsOptional() @IsString() staticIp?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() autoRenew?: boolean;
 }

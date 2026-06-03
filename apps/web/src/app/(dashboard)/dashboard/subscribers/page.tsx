@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import { UserPlus, Users, Search, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertTriangle, Clock } from "lucide-react";
+import { UserPlus, Users, Search, ChevronLeft, ChevronRight, Wifi, Cable } from "lucide-react";
 import { clsx } from "clsx";
 
 const STATUS = {
@@ -93,7 +93,7 @@ export default function SubscribersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-left">
-                  {["Subscriber", "Phone", "Package", "Status", "Expires", ""].map(h => (
+                  {["Subscriber", "Type", "Phone", "Package", "Status", "Expires", ""].map(h => (
                     <th key={h} className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
                   ))}
                 </tr>
@@ -106,6 +106,17 @@ export default function SubscribersPage() {
                       <td className="px-5 py-3.5">
                         <div className="font-semibold text-gray-900">{sub.fullName}</div>
                         <div className="text-xs text-gray-400">@{sub.username}</div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {sub.connectionType === "PPPOE" ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                            <Cable className="h-3 w-3" /> Wired
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600">
+                            <Wifi className="h-3 w-3" /> Hotspot
+                          </span>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 text-gray-600">{sub.phone}</td>
                       <td className="px-5 py-3.5">

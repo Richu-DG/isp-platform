@@ -1,9 +1,12 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
+import { InjectQueue } from "@nestjs/bull";
+import { Queue } from "bull";
 import { PrismaService } from "../../config/prisma.service";
 import { MikrotikService } from "../mikrotik/mikrotik.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { SubscriberStatus } from "@isp/database";
+import { SuspendJobData } from "./suspend.processor";
 
 @Injectable()
 export class CutoffService {
@@ -12,10 +15,11 @@ export class CutoffService {
   constructor(
     private prisma: PrismaService,
     private mikrotik: MikrotikService,
-    private notifications: NotificationsService
+    private notifications: NotificationsService,
+    @InjectQueue("suspend") private suspendQueue: Queue<SuspendJobData>
   ) {}
 
-  /** Every minute: expire accounts past their deadline */
+  /** Every minute: expire accounts past their deadline and enqueue cutoff jobs */
   @Cron(CronExpression.EVERY_MINUTE)
   async expireAccounts() {
     const expired = await this.prisma.subscriber.findMany({
@@ -23,50 +27,65 @@ export class CutoffService {
         status: SubscriberStatus.ACTIVE,
         expiresAt: { lt: new Date() },
       },
-      select: { id: true, tenantId: true, username: true, expiresAt: true },
+      select: { id: true, tenantId: true, username: true, connectionType: true },
     });
 
-    for (const sub of expired) {
-      try {
-        await this.prisma.subscriber.update({
-          where: { id: sub.id },
-          data: { status: SubscriberStatus.EXPIRED },
-        });
+    if (expired.length === 0) return;
 
-        await this.mikrotik.disconnectUser(sub.tenantId, sub.username);
-        await this.mikrotik.disableUser(sub.tenantId, sub.username);
-        await this.notifications.sendAccountExpired(sub.tenantId, sub.id);
+    await this.prisma.subscriber.updateMany({
+      where: { id: { in: expired.map((s) => s.id) } },
+      data: { status: SubscriberStatus.EXPIRED },
+    });
 
-        this.logger.log(`Expired: ${sub.username}`);
-      } catch (err) {
-        this.logger.error(`Failed to expire ${sub.username}:`, err);
-      }
-    }
+    const jobs = expired.map((sub) => ({
+      name: "cutoff",
+      data: {
+        subscriberId: sub.id,
+        tenantId: sub.tenantId,
+        username: sub.username,
+        connectionType: sub.connectionType,
+        reason: "EXPIRED" as const,
+      },
+      opts: { attempts: 5, backoff: { type: "exponential", delay: 10000 }, removeOnComplete: 100 },
+    }));
 
-    if (expired.length > 0) this.logger.log(`Expired ${expired.length} accounts`);
+    await this.suspendQueue.addBulk(jobs);
+    this.logger.log(`Queued cutoff for ${expired.length} expired account(s)`);
   }
 
-  /** Every minute: disconnect data-exceeded subscribers */
+  /** Every minute: cut off data-quota-exceeded subscribers */
   @Cron(CronExpression.EVERY_MINUTE)
   async enforceDataQuota() {
-    const exceeded = await this.prisma.subscriber.findMany({
+    const candidates = await this.prisma.subscriber.findMany({
       where: {
         status: SubscriberStatus.ACTIVE,
         dataLimit: { not: null },
       },
-      select: { id: true, tenantId: true, username: true, dataUsed: true, dataLimit: true },
+      select: { id: true, tenantId: true, username: true, connectionType: true, dataUsed: true, dataLimit: true },
     });
 
-    for (const sub of exceeded) {
-      if (sub.dataLimit && sub.dataUsed >= sub.dataLimit) {
-        await this.prisma.subscriber.update({
-          where: { id: sub.id },
-          data: { status: SubscriberStatus.EXPIRED },
-        });
-        await this.mikrotik.disconnectUser(sub.tenantId, sub.username);
-        this.logger.log(`Data quota exceeded: ${sub.username}`);
-      }
-    }
+    const exceeded = candidates.filter((s) => s.dataLimit && s.dataUsed >= s.dataLimit);
+    if (exceeded.length === 0) return;
+
+    await this.prisma.subscriber.updateMany({
+      where: { id: { in: exceeded.map((s) => s.id) } },
+      data: { status: SubscriberStatus.EXPIRED },
+    });
+
+    const jobs = exceeded.map((sub) => ({
+      name: "cutoff",
+      data: {
+        subscriberId: sub.id,
+        tenantId: sub.tenantId,
+        username: sub.username,
+        connectionType: sub.connectionType,
+        reason: "QUOTA_EXCEEDED" as const,
+      },
+      opts: { attempts: 5, backoff: { type: "exponential", delay: 10000 }, removeOnComplete: 100 },
+    }));
+
+    await this.suspendQueue.addBulk(jobs);
+    this.logger.log(`Queued cutoff for ${exceeded.length} data-quota-exceeded account(s)`);
   }
 
   /** Every day at 9am: send expiry reminders */
@@ -88,7 +107,7 @@ export class CutoffService {
   @Cron("*/5 * * * *")
   async pollRouterHealth() {
     const routers = await this.prisma.router.findMany({
-      select: { id: true, tenantId: true, ipAddress: true },
+      select: { id: true, tenantId: true },
     });
 
     for (const router of routers) {
